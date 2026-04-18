@@ -1,0 +1,120 @@
+--Policies
+  SELECT
+    a.PolicyId,
+    a.AccountId,
+    a.FullTermPremium,
+    a.PolicyLOB,
+    LTRIM(RTRIM(
+        REPLACE(
+            REPLACE(
+                REPLACE(a.ParentCompany, 'Insurance Company', ''),
+            'Insurance', ''),
+        'Company', '')
+    )) AS Carrier,
+    a.PolicyInForceStartDate,
+    a.PolicyInForceEndDate
+FROM data_marts.Policies_V2 a
+WHERE (a.PolicyInForceStartDate) >= '2025-01-01'
+  AND a.firstPolicyTransactionType = 'New Business'
+  AND a.PolicyLOB IN ('Dwelling Fire','Homeowners')
+  AND a.PolicyInForceStartDate < a.PolicyInForceEndDate
+  AND a.PolicyId NOT IN (
+        SELECT PolicyId 
+        FROM data_marts.PolicyImportBatches
+  );
+
+
+
+
+  --Accounts Zip
+  SELECT		
+    z.AccountId,		
+    z.Zip		
+FROM data_marts.Accounts z		
+WHERE z.AccountId IN (		
+    SELECT AccountId		
+    FROM data_marts.Policies_V2		
+    WHERE PolicyInForceStartDate >= '2025-01-01'			
+      AND firstPolicyTransactionType = 'New Business'		
+      AND PolicyLOB IN ('Dwelling Fire','Homeowners')		
+      AND PolicyInForceStartDate < PolicyInForceEndDate		
+      AND PolicyId NOT IN (SELECT PolicyId FROM data_marts.PolicyImportBatches)		
+)
+
+
+
+--Coverage A
+SELECT *	
+FROM (	
+    SELECT	
+        pc.PolicyId,	
+        pc.Limit1 AS CoverageA,	
+        pc.EffectiveDate,	
+        ROW_NUMBER() OVER (	
+            PARTITION BY pc.PolicyId 	
+            ORDER BY pc.EffectiveDate DESC	
+        ) AS rn	
+    FROM data_marts.PolicyCoverages pc	
+    WHERE pc.CoverageType = 'Coverage A'	
+      AND YEAR(pc.EffectiveDate) >= 2024	
+      AND pc.PolicyId IN (	
+            SELECT PolicyId	
+            FROM data_marts.Policies_V2	
+            WHERE PolicyInForceStartDate >= '2025-01-01'		
+              AND firstPolicyTransactionType = 'New Business'	
+              AND PolicyLOB IN ('Dwelling Fire','Homeowners')	
+              AND PolicyInForceStartDate < PolicyInForceEndDate	
+              AND PolicyId NOT IN (SELECT PolicyId FROM data_marts.PolicyImportBatches)	
+      )	
+) t	
+WHERE rn = 1	
+
+
+
+--Year + Form Type
+SELECT	
+    h.PolId AS PolicyId,	
+    h.YearBuilt,	
+    f.FormType	
+FROM (	
+        SELECT	
+            PolId,	
+            MIN(YearBuilt) AS YearBuilt	
+        FROM curated.AFW_HomeRating	
+        WHERE PolId IN (	
+                SELECT PolicyId	
+                FROM data_marts.Policies_V2	
+                WHERE PolicyInForceStartDate >= '2025-01-01'	
+                  AND firstPolicyTransactionType = 'New Business'	
+                  AND PolicyLOB IN ('Dwelling Fire','Homeowners')	
+                  AND PolicyInForceStartDate < PolicyInForceEndDate	
+                  AND PolicyId NOT IN (SELECT PolicyId FROM data_marts.PolicyImportBatches)	
+        )	
+        GROUP BY PolId	
+) h	
+LEFT JOIN (	
+        SELECT PolId, FormType	
+        FROM (	
+                SELECT	
+                    PolId,	
+                    FormType,	
+                    ROW_NUMBER() OVER (	
+                        PARTITION BY PolId 	
+                        ORDER BY ChangedDate DESC	
+                    ) AS rn	
+                FROM curated.AFW_formtype	
+                WHERE PolId IN (	
+                        SELECT PolicyId	
+                        FROM data_marts.Policies_V2	
+                        WHERE YEAR(PolicyInForceStartDate) = 2025	
+                          AND MONTH(PolicyInForceStartDate) BETWEEN 9 AND 11	
+                          AND firstPolicyTransactionType = 'New Business'	
+                          AND PolicyLOB IN ('Dwelling Fire','Homeowners')	
+                          AND PolicyInForceStartDate < PolicyInForceEndDate	
+                          AND PolicyId NOT IN (SELECT PolicyId FROM data_marts.PolicyImportBatches)	
+                )	
+        ) t	
+        WHERE rn = 1	
+) f	
+ON h.PolId = f.PolId	
+
