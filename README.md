@@ -126,4 +126,5 @@ Filters:
 * Assumes clean and consistent upstream data
 
 ---
-Screenshot: 
+Dashboard Screenshot: https://github.com/rahul1078/Carrier-NBS-Geo-Ranking/blob/main/Coverage%20Tab%20View.webp
+Semantic Model Screenshot: 
